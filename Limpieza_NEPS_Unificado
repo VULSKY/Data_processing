@@ -1,0 +1,128 @@
+import pandas as pd
+import tkinter as tk
+from tkinter import filedialog
+import re
+
+# -------------------------------------------------------
+# Funciones de detección de encabezado
+# -------------------------------------------------------
+
+def detectar_encabezado(df):
+    """
+    Detecta la fila que tiene el encabezado real.
+    Condiciones:
+      - La fila debe tener más del 50% de columnas NO vacías.
+      - Debe tener al menos 3 valores que parezcan texto.
+    """
+    umbral = len(df.columns) * 0.5
+
+    for idx, row in df.iterrows():
+        no_vacios = row.count()
+        textos = sum([1 for x in row if isinstance(x, str) and len(x.strip()) > 0])
+
+        if no_vacios >= umbral and textos >= 3:
+            return idx  # fila candidata como encabezado real
+
+    return 0  # fallback si no encontramos nada
+
+
+# -------------------------------------------------------
+# Funciones de limpieza
+# -------------------------------------------------------
+
+def quitar_comillas(x):
+    if isinstance(x, str):
+        return x.lstrip("'")
+    return x
+
+def limpiar_texto(x):
+    if isinstance(x, str):
+        x = x.replace("\t", " ").replace("\n", " ").replace("\r", " ")
+        x = re.sub(r"\s+", " ", x)
+        return x.strip()
+    return x
+
+
+# -------------------------------------------------------
+# PROCESAMIENTO PRINCIPAL
+# -------------------------------------------------------
+
+def procesar_archivo(ruta):
+
+    print(f"\n🔵 Procesando archivo: {ruta}")
+
+    # 1. Leer todas las hojas en bruto
+    contenido = pd.read_excel(ruta, dtype=str, sheet_name=None, header=None)
+
+    hojas_limpias = {}
+
+    # 2. Iterar por cada hoja y ver si es relevante
+    for nombre, hoja in contenido.items():
+
+        # Contar celdas con datos reales
+        score = hoja.count().sum()
+
+        # Filtrar hojas irrelevantes: < 10 celdas útiles
+        if score < 10:
+            print(f"   ❌ Hoja omitida por baja información: {nombre}")
+            continue
+
+        print(f"   ✔ Procesando hoja: {nombre}")
+
+        # 3. Detectar encabezado de esa hoja
+        encabezado_idx = detectar_encabezado(hoja)
+        print(f"      ➝ Encabezado detectado en fila: {encabezado_idx}")
+
+        # 4. Reconstruir dataframe con encabezado real
+        df = pd.read_excel(
+            ruta,
+            dtype=str,
+            sheet_name=nombre,
+            header=encabezado_idx
+        )
+
+        # 5. Limpieza ligera (sin eliminar datos)
+        df = df.applymap(quitar_comillas)
+        df = df.applymap(limpiar_texto)
+
+        # Guardar la hoja ya limpia
+        hojas_limpias[nombre] = df
+
+    # 6. Exportar todas las hojas en un solo archivo
+    salida = ruta.replace(".xlsx", "_LIMPIO.xlsx")
+    with pd.ExcelWriter(salida, engine="openpyxl") as writer:
+        for nombre, df in hojas_limpias.items():
+            df.to_excel(writer, sheet_name=nombre[:31], index=False)
+
+    print(f"   ✔ Archivo limpio generado: {salida}\n")
+
+
+# -------------------------------------------------------
+# Interfaz
+# -------------------------------------------------------
+
+def seleccionar_y_procesar():
+    root = tk.Tk()
+    root.withdraw()
+
+    rutas = filedialog.askopenfilenames(
+        title="Selecciona los archivos",
+        filetypes=[("Archivos Excel", "*.xlsx")]
+    )
+
+    if not rutas:
+        print("⚠ No se seleccionaron archivos.")
+        return
+
+    for archivo in rutas:
+        procesar_archivo(archivo)
+
+    print("\n✅ PROCESAMIENTO FINALIZADO")
+
+
+# -------------------------------------------------------
+# Ejecutar
+# -------------------------------------------------------
+
+if __name__ == "__main__":
+    seleccionar_y_procesar()

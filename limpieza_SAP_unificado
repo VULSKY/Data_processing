@@ -1,0 +1,117 @@
+import pandas as pd
+import tkinter as tk
+from tkinter import filedialog
+import re
+
+# -------------------------------------------------------
+# Funciones de detección de encabezado
+# -------------------------------------------------------
+
+def detectar_encabezado(df):
+    """
+    Detecta la fila que tiene el encabezado real.
+    Condiciones:
+      - La fila debe tener más del 50% de columnas NO vacías.
+      - Debe tener al menos 3 valores que parezcan texto.
+    """
+    umbral = len(df.columns) * 0.5
+
+    for idx, row in df.iterrows():
+        no_vacios = row.count()
+        textos = sum([1 for x in row if isinstance(x, str) and len(x.strip()) > 0])
+
+        if no_vacios >= umbral and textos >= 3:
+            return idx  # fila candidata como encabezado real
+
+    return 0  # fallback si no encontramos nada
+
+
+# -------------------------------------------------------
+# Funciones de limpieza
+# -------------------------------------------------------
+
+def quitar_comillas(x):
+    if isinstance(x, str):
+        return x.lstrip("'")
+    return x
+
+def limpiar_texto(x):
+    if isinstance(x, str):
+        x = x.replace("\t", " ").replace("\n", " ").replace("\r", " ")
+        x = re.sub(r"\s+", " ", x)
+        return x.strip()
+    return x
+
+
+# -------------------------------------------------------
+# PROCESAMIENTO PRINCIPAL
+# -------------------------------------------------------
+
+def procesar_archivo(ruta):
+
+    print(f"\n🔵 Procesando archivo: {ruta}")
+
+    # 1. Primero leemos TODAS las hojas sin tocar datos
+    contenido = pd.read_excel(ruta, dtype=str, sheet_name=None, header=None)
+
+    # 2. Elegimos la hoja con más filas con información
+    mejor_hoja = None
+    mejor_score = -1
+
+    for nombre, hoja in contenido.items():
+        score = hoja.count().sum()
+        if score > mejor_score:
+            mejor_score = score
+            mejor_hoja = nombre
+
+    print(f"   ✔ Hoja seleccionada: {mejor_hoja}")
+
+    df_raw = contenido[mejor_hoja]
+
+    # 3. Detectamos fila real del encabezado
+    encabezado_fila = detectar_encabezado(df_raw)
+    print(f"   ✔ Fila detectada como encabezado: {encabezado_fila}")
+
+    # 4. Reconstruimos DF con la fila correcta como encabezado
+    df = pd.read_excel(ruta, dtype=str, sheet_name=mejor_hoja, header=encabezado_fila)
+
+    # 5. Limpieza ligera (sin eliminar datos)
+    df = df.applymap(quitar_comillas)
+    df = df.applymap(limpiar_texto)
+
+    # 6. Exportar
+    salida = ruta.replace(".xlsx", "_LIMPIO.xlsx")
+    df.to_excel(salida, index=False)
+
+    print(f"   ✔ Archivo limpio generado: {salida}\n")
+
+
+# -------------------------------------------------------
+# Interfaz
+# -------------------------------------------------------
+
+def seleccionar_y_procesar():
+    root = tk.Tk()
+    root.withdraw()
+
+    rutas = filedialog.askopenfilenames(
+        title="Selecciona los archivos",
+        filetypes=[("Archivos Excel", "*.xlsx")]
+    )
+
+    if not rutas:
+        print("⚠ No se seleccionaron archivos.")
+        return
+
+    for archivo in rutas:
+        procesar_archivo(archivo)
+
+    print("\n✅ PROCESAMIENTO FINALIZADO")
+
+
+# -------------------------------------------------------
+# Ejecutar
+# -------------------------------------------------------
+
+if __name__ == "__main__":
+    seleccionar_y_procesar()
