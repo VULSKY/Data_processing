@@ -1,0 +1,37 @@
+
+
+import pandas as pd
+import tkinter as tk
+from tkinter import filedialog
+import os
+
+# Crear ventana oculta para el selector
+root = tk.Tk()
+root.withdraw()
+
+# Seleccionar archivo Excel
+print("Seleccione el archivo Excel...")
+input_file = filedialog.askopenfilename(title="Seleccione el archivo Excel", filetypes=[("Archivos Excel", "*.xlsx *.xls")])
+
+if not input_file:
+    print("❌ No se seleccionó ningún archivo. Saliendo...")
+    exit()
+
+# Seleccionar ubicación y nombre del archivo de salida
+print("Seleccione dónde guardar el archivo convertido...")
+output_file = filedialog.asksaveasfilename(title="Guardar archivo como", defaultextension=".txt", filetypes=[("Archivo TXT", "*.txt"), ("Archivo CSV", "*.csv")])
+
+if not output_file:
+    print("❌ No se seleccionó ubicación para guardar. Saliendo...")
+    exit()
+
+# Leer el archivo Excel asegurando que todo se lea como texto
+df = pd.read_excel(input_file, dtype=str)
+
+# Convertir todo el contenido a MAYÚSCULAS
+df = df.applymap(lambda x: x.upper() if isinstance(x, str) else x)
+
+# Guardar como archivo delimitado por tabulaciones (UTF-8)
+df.to_csv(output_file, sep="\t", index=False, encoding="utf-8")
+
+print(f"✅ Archivo convertido y guardado en: {output_file}")

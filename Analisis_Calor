@@ -1,0 +1,91 @@
+
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+import tkinter as tk
+from tkinter import filedialog
+from matplotlib.backends.backend_pdf import PdfPages
+
+# --- 1. Selección de archivo ---
+root = tk.Tk()
+root.withdraw()
+print("Seleccione el archivo Excel...")
+input_file = filedialog.askopenfilename(title="Seleccione el archivo Excel", filetypes=[("Archivos Excel", "*.xlsx *.xls")])
+
+if not input_file:
+    print("❌ No se seleccionó ningún archivo. Saliendo...")
+    exit()
+
+# --- 2. Leer archivo ---
+excel_file = pd.ExcelFile(input_file)
+print("\n✅ Hojas encontradas:", excel_file.sheet_names)
+df = pd.read_excel(input_file, sheet_name=excel_file.sheet_names[0], dtype=str)
+
+# --- 3. Análisis exploratorio ---
+print("\n✅ Primeras filas:")
+print(df.head())
+print("\n✅ Tipos de datos:")
+print(df.dtypes)
+print("\n✅ Conteo de registros:", len(df))
+print("\n✅ Valores nulos por columna:")
+print(df.isnull().sum())
+print("\n✅ Registros duplicados:", df.duplicated().sum())
+
+# --- 4. Estadísticas descriptivas ---
+df_numeric = df.apply(pd.to_numeric, errors='coerce')
+stats = df_numeric.describe().T
+print("\n✅ Estadísticas descriptivas:")
+print(stats)
+
+# --- 5. Generar informe PDF ---
+pdf_report = PdfPages("Informe_Analisis.pdf")
+
+# Tabla de estadísticas
+fig, ax = plt.subplots(figsize=(8, 6))
+ax.axis('tight')
+ax.axis('off')
+table = ax.table(cellText=stats.round(2).values,
+                 colLabels=stats.columns,
+                 rowLabels=stats.index,
+                 loc='center')
+plt.title("Estadísticas Descriptivas")
+pdf_report.savefig()
+plt.close()
+
+# Histogramas
+for col in df_numeric.columns:
+    plt.figure(figsize=(6,4))
+    sns.histplot(df_numeric[col].dropna(), kde=True)
+    plt.title(f"Distribución de {col}")
+    pdf_report.savefig()
+    plt.close()
+
+# Mapa de calor de correlaciones
+plt.figure(figsize=(10,8))
+sns.heatmap(df_numeric.corr(), annot=True, cmap="coolwarm")
+plt.title("Mapa de calor de correlaciones")
+pdf_report.savefig()
+plt.close()
+
+# Gráficos por categorías (top 10 valores más frecuentes)
+for col in df.columns:
+    if df[col].nunique() < 50:  # columnas categóricas
+        plt.figure(figsize=(8,6))
+        df[col].value_counts().head(10).plot(kind='bar')
+        plt.title(f"Top categorías en {col}")
+        pdf_report.savefig()
+        plt.close()
+
+# --- 6. Limpieza automática ---
+df = df.apply(lambda col: col.map(lambda x: x.upper() if isinstance(x, str) else x))
+df.drop_duplicates(inplace=True)
+
+# --- 7. Exportación final ---
+output_file = filedialog.asksaveasfilename(title="Guardar archivo limpio", defaultextension=".txt", filetypes=[("Archivo TXT", "*.txt")])
+if output_file:
+    df.to_csv(output_file, sep="\t", index=False, encoding="utf-8")
+    print(f"✅ Archivo limpio guardado en: {output_file}")
+
+# --- 8. Guardar informe PDF ---
+pdf_report.close()
+print("✅ Informe PDF generado: Informe_Analisis.pdf")
