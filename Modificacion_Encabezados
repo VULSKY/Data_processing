@@ -1,0 +1,153 @@
+import pandas as pd
+import tkinter as tk
+from tkinter import filedialog, messagebox
+from openpyxl import load_workbook
+from openpyxl.utils.dataframe import dataframe_to_rows
+import os
+
+def seleccionar_archivos():
+    """Abre diálogos para seleccionar archivos"""
+    root = tk.Tk()
+    root.withdraw()
+    
+    print("\n📂 Seleccione el archivo Excel ORIGINAL")
+    archivo_original = filedialog.askopenfilename(
+        title="Seleccione el archivo Excel ORIGINAL",
+        filetypes=[("Archivos Excel", "*.xlsx *.xls")]
+    )
+    
+    if not archivo_original:
+        return None, None
+    
+    print("\n📂 Seleccione el archivo de MAPEO de encabezados")
+    archivo_mapeo = filedialog.askopenfilename(
+        title="Seleccione el archivo de MAPEO",
+        filetypes=[("Archivos Excel", "*.xlsx *.xls")]
+    )
+    
+    return archivo_original, archivo_mapeo
+
+def cargar_mapeo(ruta_mapeo):
+    """Carga el archivo de mapeo y crea un diccionario"""
+    
+    df_mapeo = pd.read_excel(ruta_mapeo, sheet_name='Mapeo')
+    
+    # Verificar que la columna 'EncabezadoNuevo' esté completa
+    vacios = df_mapeo['EncabezadoNuevo'].isna().sum()
+    
+    if vacios > 0:
+        print(f"\n⚠️  ADVERTENCIA: {vacios} encabezados nuevos están vacíos")
+        respuesta = input("¿Desea continuar de todas formas? (s/n): ")
+        if respuesta.lower() != 's':
+            return None
+    
+    # Crear diccionario de mapeo: {(NombreHoja, EncabezadoOriginal): EncabezadoNuevo}
+    mapeo = {}
+    
+    for _, row in df_mapeo.iterrows():
+        hoja = row['NombreHoja']
+        original = row['EncabezadoOriginal']
+        nuevo = row['EncabezadoNuevo']
+        
+        # Si el nuevo está vacío, mantener el original
+        if pd.isna(nuevo) or nuevo == '':
+            nuevo = original
+        
+        mapeo[(hoja, original)] = nuevo
+    
+    return mapeo
+
+def aplicar_encabezados(ruta_original, mapeo):
+    """Aplica los nuevos encabezados al archivo original"""
+    
+    # Cargar el archivo original
+    wb = load_workbook(ruta_original)
+    hojas = wb.sheetnames
+    
+    # Crear nombre del archivo de salida
+    directorio = os.path.dirname(ruta_original)
+    nombre_base = os.path.splitext(os.path.basename(ruta_original))[0]
+    archivo_salida = os.path.join(directorio, f"{nombre_base}_ENCABEZADOS_NUEVOS.xlsx")
+    
+    print(f"\n{'='*60}")
+    print(f"Aplicando nuevos encabezados...")
+    print(f"{'='*60}\n")
+    
+    cambios_totales = 0
+    
+    # Procesar cada hoja
+    for hoja in hojas:
+        print(f"📄 Procesando hoja: {hoja}")
+        
+        # Leer la hoja
+        df = pd.read_excel(ruta_original, sheet_name=hoja)
+        
+        # Crear mapeo de columnas para esta hoja
+        columnas_nuevas = {}
+        cambios_hoja = 0
+        
+        for col_original in df.columns:
+            clave = (hoja, col_original)
+            if clave in mapeo:
+                col_nueva = mapeo[clave]
+                if col_nueva != col_original:
+                    columnas_nuevas[col_original] = col_nueva
+                    cambios_hoja += 1
+                    print(f"   ✓ '{col_original}' → '{col_nueva}'")
+            else:
+                print(f"   ⚠️  Columna '{col_original}' no encontrada en el mapeo")
+        
+        # Renombrar columnas
+        if columnas_nuevas:
+            df.rename(columns=columnas_nuevas, inplace=True)
+        
+        # Guardar hoja en el nuevo archivo
+        if hoja == hojas[0]:
+            with pd.ExcelWriter(archivo_salida, engine='openpyxl') as writer:
+                df.to_excel(writer, sheet_name=hoja, index=False)
+        else:
+            with pd.ExcelWriter(archivo_salida, engine='openpyxl', mode='a') as writer:
+                df.to_excel(writer, sheet_name=hoja, index=False)
+        
+        cambios_totales += cambios_hoja
+        print(f"   Total cambios en esta hoja: {cambios_hoja}\n")
+    
+    return archivo_salida, cambios_totales
+
+def main():
+    print("\n" + "="*60)
+    print("SCRIPT 2: APLICADOR DE NUEVOS ENCABEZADOS")
+    print("="*60 + "\n")
+    
+    # Seleccionar archivos
+    archivo_original, archivo_mapeo = seleccionar_archivos()
+    
+    if not archivo_original or not archivo_mapeo:
+        print("❌ No se seleccionaron los archivos necesarios")
+        return
+    
+    print(f"\n✓ Archivo original: {os.path.basename(archivo_original)}")
+    print(f"✓ Archivo mapeo: {os.path.basename(archivo_mapeo)}")
+    
+    # Cargar mapeo
+    mapeo = cargar_mapeo(archivo_mapeo)
+    
+    if mapeo is None:
+        print("\n❌ Proceso cancelado")
+        return
+    
+    print(f"\n✓ Mapeo cargado: {len(mapeo)} encabezados")
+    
+    # Aplicar encabezados
+    archivo_salida, cambios = aplicar_encabezados(archivo_original, mapeo)
+    
+    print(f"\n{'='*60}")
+    print(f"✓ PROCESO COMPLETADO EXITOSAMENTE")
+    print(f"{'='*60}")
+    print(f"\n📁 Archivo generado:")
+    print(f"   {archivo_salida}")
+    print(f"\n📊 Total de cambios aplicados: {cambios}")
+    print(f"\n{'='*60}\n")
+
+if __name__ == "__main__":
+    main()

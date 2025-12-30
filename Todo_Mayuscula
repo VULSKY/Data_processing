@@ -1,10 +1,9 @@
 import pandas as pd
 from tkinter import Tk
-from tkinter.filedialog import askopenfilename
+from tkinter.filedialog import askopenfilenames
 import unicodedata
 
 def quitar_tildes(s: str) -> str:
-    # opcional: normaliza y quita tildes (si quieres mantener tildes, comenta esta función)
     return ''.join(
         c for c in unicodedata.normalize('NFKD', s) if not unicodedata.combining(c)
     )
@@ -13,56 +12,64 @@ def convertir_excel_mayusculas(convertir_tildes=False):
     # Oculta la ventana principal de Tkinter
     Tk().withdraw()
 
-    print("Seleccione el archivo Excel...")
-    archivo = askopenfilename(
-        title="Selecciona el archivo Excel",
+    print("Seleccione los archivos Excel...")
+    archivos = askopenfilenames(
+        title="Selecciona uno o más archivos Excel",
         filetypes=[("Archivos Excel", "*.xlsx *.xls")]
     )
 
-    if not archivo:
-        print("No seleccionaste archivo.")
+    if not archivos:
+        print("No seleccionaste archivos.")
         return
 
-    # Leer todas las hojas
-    xls = pd.ExcelFile(archivo)
-    hojas = xls.sheet_names
-    print(f"Hojas encontradas: {hojas}")
+    print(f"\n{len(archivos)} archivo(s) seleccionado(s)\n")
 
-    archivo_salida = archivo.replace(".xlsx", "_MAYUS.xlsx")
+    for archivo in archivos:
+        print(f"Procesando: {archivo}")
+        
+        # Leer todas las hojas
+        xls = pd.ExcelFile(archivo)
+        hojas = xls.sheet_names
+        print(f"  Hojas encontradas: {hojas}")
 
-    with pd.ExcelWriter(archivo_salida, engine="openpyxl") as writer:
-        for hoja in hojas:
-            print(f"Procesando hoja: {hoja}")
-            df = pd.read_excel(archivo, sheet_name=hoja)
+        # Generar nombre del archivo de salida
+        if archivo.endswith('.xlsx'):
+            archivo_salida = archivo.replace(".xlsx", "_MAYUS.xlsx")
+        else:
+            archivo_salida = archivo.replace(".xls", "_MAYUS.xlsx")
 
-            # 1) Encabezados: si el nombre de columna es texto, convertir a mayúsculas y strip
-            new_cols = []
-            for col in df.columns:
-                if isinstance(col, str):
-                    col2 = col.strip()
-                    col2 = col2.upper()
+        with pd.ExcelWriter(archivo_salida, engine="openpyxl") as writer:
+            for hoja in hojas:
+                print(f"    Procesando hoja: {hoja}")
+                df = pd.read_excel(archivo, sheet_name=hoja)
+
+                # 1) Encabezados: convertir a mayúsculas y strip
+                new_cols = []
+                for col in df.columns:
+                    if isinstance(col, str):
+                        col2 = col.strip()
+                        col2 = col2.upper()
+                        if convertir_tildes:
+                            col2 = quitar_tildes(col2)
+                        new_cols.append(col2)
+                    else:
+                        new_cols.append(col)
+                df.columns = new_cols
+
+                # 2) Celdas: convertir columnas de texto a mayúsculas
+                for col in df.select_dtypes(include=["object"]).columns:
+                    df[col] = df[col].map(lambda x: x.strip().upper() if isinstance(x, str) else x)
+
                     if convertir_tildes:
-                        col2 = quitar_tildes(col2)
-                    new_cols.append(col2)
-                else:
-                    new_cols.append(col)  # mantener si no es texto
-            df.columns = new_cols
+                        df[col] = df[col].map(lambda x: quitar_tildes(x) if isinstance(x, str) else x)
 
-            # 2) Celdas: convertir SOLO columnas de texto a mayúsculas (más eficiente)
-            for col in df.select_dtypes(include=["object"]).columns:
-                # strip antes y convertir mayúsculas; conserva None/NaN sin alterar
-                df[col] = df[col].map(lambda x: x.strip().upper() if isinstance(x, str) else x)
+                # Escribir hoja
+                df.to_excel(writer, sheet_name=hoja, index=False)
 
-                if convertir_tildes:
-                    df[col] = df[col].map(lambda x: quitar_tildes(x) if isinstance(x, str) else x)
+        print(f"  ✓ Archivo generado: {archivo_salida}\n")
 
-            # Escribir hoja
-            df.to_excel(writer, sheet_name=hoja, index=False)
-
-    print("\n¡Proceso completado!")
-    print("Archivo generado:", archivo_salida)
+    print("¡Proceso completado!")
 
 
 if __name__ == "__main__":
-    # Si quieres quitar tildes también, pon True dentro de los paréntesis
     convertir_excel_mayusculas(convertir_tildes=False)

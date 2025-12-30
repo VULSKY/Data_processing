@@ -1,0 +1,181 @@
+import pandas as pd
+from tkinter import Tk
+from tkinter.filedialog import askopenfilenames
+from datetime import datetime
+import re
+import os
+from collections import defaultdict
+
+def extraer_info(nombre_archivo: str) -> tuple:
+    """
+    Extrae la EPS y el tipo de reporte del nombre del archivo.
+    
+    Formatos esperados:
+    - Signos vitales Cajica 202511_LIMPIO_MAYUS.xlsx -> (Signos vitales, Cajica/Compensar)
+    - report001_2025-11-01_2025-11-30_0_procesado_MAYUS.xlsx -> (Agendamiento/Citas, Coosalud)
+    - report007_2025-11-01_2025-11-30_0 (1)_procesado_MAYUS.xlsx -> (Ordenamientos, Coosalud)
+    """
+    nombre = nombre_archivo.replace('.xlsx', '').replace('.xls', '')
+    
+    # Detectar si es formato Coosalud (report00X) o Compensar (descriptivo)
+    es_coosalud = bool(re.match(r'^reporte\d+', nombre, flags=re.IGNORECASE))
+    
+    if es_coosalud:
+        # Formato Coosalud: reporte00X
+        # reporte001 = Agendamiento/Citas
+        # reporte007 = Ordenamientos
+        if nombre.startswith('reporte001'):
+            tipo = "Citas"
+        elif nombre.startswith('reporte007'):
+            tipo = "Ordenamientos"
+        else:
+            tipo = "Otros"
+        
+        eps = "Coosalud"
+    else:
+        # Formato Compensar: "Tipo_Sede"
+        # Detectar sede (Cajica, Calera, La mesa, Ubate, Chia)
+        sedes = ['Cajica', 'Calera', 'La mesa', 'Ubate', 'Chia']
+        eps = "Compensar"
+        sede = None
+        
+        for s in sedes:
+            if s.lower() in nombre.lower():
+                sede = s
+                break
+        
+        # Detectar tipo de reporte
+        if 'Citas' in nombre:
+            tipo = "Citas"
+        elif 'Signos vitales' in nombre:
+            tipo = "Signos vitales"
+        elif 'Ordenamientos' in nombre:
+            tipo = "Ordenamientos"
+        else:
+            tipo = "Otros"
+        
+        # Agregar sede al tipo para Compensar
+        if sede:
+            tipo = f"{tipo} {sede}"
+    
+    return (tipo, eps)
+
+
+def unificar_excel():
+    Tk().withdraw()
+
+    print("Seleccione los archivos Excel a unificar...")
+    archivos = askopenfilenames(
+        title="Selecciona uno o más archivos Excel",
+        filetypes=[("Archivos Excel", "*.xlsx *.xls")]
+    )
+
+    if not archivos:
+        print("No seleccionaste archivos.")
+        return
+
+    print(f"\n{len(archivos)} archivo(s) seleccionado(s)\n")
+
+    # Estructura: {eps: {tipo: [dataframes]}}
+    grupos = defaultdict(lambda: defaultdict(list))
+    encabezados_por_tipo = {}
+    eps_detectada = None
+
+    for archivo in archivos:
+        nombre = archivo.split('\\')[-1] if '\\' in archivo else archivo.split('/')[-1]
+        print(f"Procesando: {nombre}")
+        
+        try:
+            tipo, eps = extraer_info(nombre)
+            
+            # Detectar EPS principal
+            if eps_detectada is None:
+                eps_detectada = eps
+            
+            print(f"  Tipo: {tipo}")
+            print(f"  EPS: {eps}")
+            
+            # Leer la primera hoja
+            df = pd.read_excel(archivo, sheet_name=0)
+            
+            # Validar encabezados
+            encabezados_actuales = list(df.columns)
+            
+            if tipo not in encabezados_por_tipo:
+                encabezados_por_tipo[tipo] = encabezados_actuales
+            
+            grupos[eps][tipo].append(df)
+            print(f"  ✓ Filas agregadas: {len(df)}\n")
+
+        except Exception as e:
+            print(f"  ✗ Error: {e}\n")
+            continue
+
+    if not grupos:
+        print("No se pudieron procesar archivos.")
+        return
+
+    # Unificar y generar archivos/hojas
+    print(f"\nGenerando salida para {eps_detectada}...\n")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    # Obtener la ruta del primer archivo para guardar ahí
+    ruta_salida = os.path.dirname(archivos[0])
+    if not ruta_salida:
+        ruta_salida = "."
+    
+    # Agrupar tipos por categoría principal
+    tipos_simplificados = defaultdict(list)
+    
+    for eps, tipos_dict in grupos.items():
+        for tipo, dataframes in tipos_dict.items():
+            df_unificado = pd.concat(dataframes, ignore_index=True)
+            
+            # Extraer tipo principal (sin sede para simplificar)
+            tipo_principal = tipo.split()[0]  # "Citas", "Signos", "Ordenamientos"
+            if "vitales" in tipo.lower():
+                tipo_principal = "Signos vitales"
+            
+            tipos_simplificados[tipo_principal].append({
+                'nombre': tipo,
+                'eps': eps,
+                'df': df_unificado,
+                'filas': len(df_unificado)
+            })
+    
+    # Crear archivo con hojas o archivos separados
+    if eps_detectada == "Compensar":
+        # Para Compensar: un archivo con múltiples hojas
+        archivo_salida = os.path.join(ruta_salida, f"Compensar_Unificado_{timestamp}.xlsx")
+        
+        with pd.ExcelWriter(archivo_salida, engine="openpyxl") as writer:
+            for tipo_principal, items in sorted(tipos_simplificados.items()):
+                df_combinado = pd.concat([item['df'] for item in items], ignore_index=True)
+                df_combinado.to_excel(writer, sheet_name=tipo_principal[:31], index=False)  # Max 31 caracteres
+                
+                print(f"✓ Hoja: {tipo_principal}")
+                print(f"  Total de filas: {len(df_combinado)}")
+                print(f"  Items agrupados: {len(items)}\n")
+        
+        print(f"Archivo generado: {archivo_salida}")
+    
+    else:  # Coosalud
+        # Para Coosalud: un archivo con múltiples hojas
+        archivo_salida = os.path.join(ruta_salida, f"Coosalud_Unificado_{timestamp}.xlsx")
+        
+        with pd.ExcelWriter(archivo_salida, engine="openpyxl") as writer:
+            for tipo_principal, items in sorted(tipos_simplificados.items()):
+                df_combinado = pd.concat([item['df'] for item in items], ignore_index=True)
+                df_combinado.to_excel(writer, sheet_name=tipo_principal[:31], index=False)  # Max 31 caracteres
+                
+                print(f"✓ Hoja: {tipo_principal}")
+                print(f"  Total de filas: {len(df_combinado)}")
+                print(f"  Items agrupados: {len(items)}\n")
+        
+        print(f"Archivo generado: {archivo_salida}")
+
+    print("¡Proceso completado!")
+
+
+if __name__ == "__main__":
+    unificar_excel()

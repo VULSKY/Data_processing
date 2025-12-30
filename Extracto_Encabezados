@@ -1,0 +1,116 @@
+import pandas as pd
+import tkinter as tk
+from tkinter import filedialog
+from openpyxl import load_workbook
+import os
+
+def seleccionar_archivo():
+    """Abre un diálogo para seleccionar archivo Excel"""
+    root = tk.Tk()
+    root.withdraw()
+    archivo = filedialog.askopenfilename(
+        title="Seleccione el archivo Excel",
+        filetypes=[("Archivos Excel", "*.xlsx *.xls")]
+    )
+    return archivo
+
+def extraer_encabezados(ruta_archivo):
+    """Extrae nombres de hojas y encabezados de cada columna"""
+    
+    # Cargar el archivo
+    wb = load_workbook(ruta_archivo, read_only=True)
+    hojas = wb.sheetnames
+    
+    # Crear lista para almacenar información
+    datos_extraidos = []
+    
+    print(f"\n{'='*60}")
+    print(f"Archivo: {os.path.basename(ruta_archivo)}")
+    print(f"{'='*60}\n")
+    
+    # Iterar sobre cada hoja
+    for hoja in hojas:
+        print(f"📄 Procesando hoja: {hoja}")
+        
+        # Leer la hoja
+        df = pd.read_excel(ruta_archivo, sheet_name=hoja)
+        
+        # Obtener encabezados
+        encabezados = df.columns.tolist()
+        
+        print(f"   ✓ {len(encabezados)} columnas encontradas\n")
+        
+        # Crear registro para cada columna
+        for idx, encabezado in enumerate(encabezados, start=1):
+            datos_extraidos.append({
+                'NombreHoja': hoja,
+                'NumeroColumna': idx,
+                'EncabezadoOriginal': encabezado,
+                'EncabezadoNuevo': ''  # Columna vacía para llenar manualmente
+            })
+    
+    return datos_extraidos
+
+def guardar_mapeo(datos, ruta_original):
+    """Guarda el mapeo en un nuevo archivo Excel"""
+    
+    # Crear DataFrame
+    df_mapeo = pd.DataFrame(datos)
+    
+    # Crear nombre del archivo de salida
+    directorio = os.path.dirname(ruta_original)
+    nombre_base = os.path.splitext(os.path.basename(ruta_original))[0]
+    archivo_salida = os.path.join(directorio, f"{nombre_base}_MAPEO_ENCABEZADOS.xlsx")
+    
+    # Guardar en Excel con formato
+    with pd.ExcelWriter(archivo_salida, engine='openpyxl') as writer:
+        df_mapeo.to_excel(writer, sheet_name='Mapeo', index=False)
+        
+        # Ajustar ancho de columnas
+        worksheet = writer.sheets['Mapeo']
+        for column in worksheet.columns:
+            max_length = 0
+            column_letter = column[0].column_letter
+            for cell in column:
+                try:
+                    if len(str(cell.value)) > max_length:
+                        max_length = len(str(cell.value))
+                except:
+                    pass
+            adjusted_width = min(max_length + 2, 50)
+            worksheet.column_dimensions[column_letter].width = adjusted_width
+    
+    print(f"\n{'='*60}")
+    print(f"✓ Archivo de mapeo generado exitosamente:")
+    print(f"  {archivo_salida}")
+    print(f"{'='*60}\n")
+    print("📝 Instrucciones:")
+    print("1. Abra el archivo de mapeo")
+    print("2. Complete la columna 'EncabezadoNuevo' con los nombres genéricos")
+    print("3. Guarde el archivo")
+    print("4. Execute el Script 2 para aplicar los cambios\n")
+    
+    return archivo_salida
+
+def main():
+    print("\n" + "="*60)
+    print("SCRIPT 1: EXTRACTOR DE ENCABEZADOS")
+    print("="*60 + "\n")
+    
+    # Seleccionar archivo
+    archivo = seleccionar_archivo()
+    
+    if not archivo:
+        print("❌ No se seleccionó ningún archivo")
+        return
+    
+    # Extraer encabezados
+    datos = extraer_encabezados(archivo)
+    
+    # Guardar mapeo
+    archivo_mapeo = guardar_mapeo(datos, archivo)
+    
+    print(f"✓ Proceso completado. Total de columnas procesadas: {len(datos)}\n")
+
+if __name__ == "__main__":
+    main()
