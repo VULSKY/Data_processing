@@ -14,6 +14,56 @@ def seleccionar_archivo():
     )
     return archivo
 
+def obtener_estadisticas_columna(df, columna):
+    """Obtiene estadísticas básicas de una columna incluyendo tipo de dato"""
+    try:
+        datos = df[columna]
+        tipo = detectar_tipo_dato(datos)
+        
+        stats = {
+            'Tipo': tipo,
+            'NoNulos': int(datos.notna().sum()),
+            'Nulos': int(datos.isna().sum()),
+            'Porcentaje_Nulos': f"{(datos.isna().sum() / len(datos) * 100):.1f}%"
+        }
+        
+        return stats
+    except:
+        return {'Tipo': 'Desconocido'}
+
+def detectar_tipo_dato(serie):
+    """Detecta el tipo de dato de una columna"""
+    try:
+        dtype = str(serie.dtype)
+        
+        # Detectar por tipo de pandas
+        if 'int' in dtype:
+            return "Entero"
+        elif 'float' in dtype:
+            return "Decimal"
+        elif 'datetime' in dtype or 'date' in dtype:
+            return "Fecha"
+        elif 'bool' in dtype:
+            return "Booleano"
+        elif 'object' in dtype:
+            # Para object, examinar valores para determinar el tipo real
+            datos_no_nulos = serie.dropna()
+            
+            if len(datos_no_nulos) == 0:
+                return "Vacío"
+            
+            # Verificar si son booleanos
+            valores_unicos = set(datos_no_nulos.unique())
+            if valores_unicos.issubset({True, False, 'True', 'False', 'true', 'false', 'Si', 'No', 'YES', 'NO', 'si', 'no', 'yes', 'no', 1, 0}):
+                return "Booleano"
+            
+            # Por defecto string
+            return "String"
+        else:
+            return "Desconocido"
+    except:
+        return "Desconocido"
+
 def extraer_encabezados(ruta_archivo):
     """Extrae nombres de hojas y encabezados de cada columna"""
     
@@ -42,11 +92,17 @@ def extraer_encabezados(ruta_archivo):
         
         # Crear registro para cada columna
         for idx, encabezado in enumerate(encabezados, start=1):
+            stats = obtener_estadisticas_columna(df, encabezado)
+            
             datos_extraidos.append({
                 'NombreHoja': hoja,
                 'NumeroColumna': idx,
                 'EncabezadoOriginal': encabezado,
-                'EncabezadoNuevo': ''  # Columna vacía para llenar manualmente
+                'EncabezadoNuevo': '',  # Columna vacía para llenar manualmente
+                'TipoDato': stats.get('Tipo', 'Desconocido'),
+                'Registros_No_Nulos': stats.get('NoNulos', 0),
+                'Registros_Nulos': stats.get('Nulos', 0),
+                'Porcentaje_Nulos': stats.get('Porcentaje_Nulos', 'N/A'),
             })
     
     return datos_extraidos
@@ -91,6 +147,7 @@ def guardar_mapeo(datos, ruta_original):
     print("4. Execute el Script 2 para aplicar los cambios\n")
     
     return archivo_salida
+
 
 def main():
     print("\n" + "="*60)
