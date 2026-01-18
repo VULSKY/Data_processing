@@ -1,0 +1,631 @@
+# Documentación: Modelo Estrella para Análisis de Citas y Ordenamientos
+## Sistema de Salud Coosalud
+
+---
+
+## 1. INTRODUCCIÓN
+
+### 1.1 Objetivo del Documento
+Documentar el proceso de diseño e implementación de un modelo dimensional tipo estrella para el análisis de datos de citas médicas y ordenamientos de procedimientos en el sistema de salud Coosalud.
+
+### 1.2 Alcance
+- Transformación de datos operacionales a modelo analítico
+- Definición de métricas e indicadores clave (KPIs)
+- Estructura para dashboards en Power BI
+
+---
+
+## 2. ¿POR QUÉ MODELO ESTRELLA?
+
+### 2.1 Definición
+El modelo estrella es un diseño de base de datos dimensional que organiza los datos en:
+- **Tablas de Hechos (Facts):** Contienen las métricas y medidas del negocio
+- **Tablas de Dimensión (Dimensions):** Contienen los contextos descriptivos
+
+### 2.2 Ventajas para este Proyecto
+
+| Ventaja | Beneficio en Coosalud |
+|---------|----------------------|
+| **Consultas Rápidas** | Dashboards en Power BI responden en segundos |
+| **Fácil Comprensión** | El equipo médico y administrativo entiende la estructura |
+| **Flexibilidad Analítica** | Análisis multidimensional (por médico, fecha, especialidad, etc.) |
+| **Optimización en Power BI** | Modelo óptimo para relaciones y cálculos DAX |
+| **Escalabilidad** | Fácil agregar nuevas dimensiones sin afectar lo existente |
+
+### 2.3 Alternativas Descartadas
+- **Modelo Normalizado (3NF):** Muchas tablas, consultas lentas, complejo para análisis
+- **Modelo Plano (Tabla Única):** Redundancia excesiva, difícil mantenimiento
+- **Modelo Copo de Nieve:** Demasiado complejo para el volumen de datos actual
+
+---
+
+## 3. PROCESO DE SELECCIÓN DE DIMENSIONES
+
+### 3.1 Metodología Aplicada
+
+#### Paso 1: Identificación de Procesos de Negocio
+**Procesos identificados:**
+1. Gestión de Citas Médicas
+2. Gestión de Ordenamientos/Autorizaciones
+
+#### Paso 2: Definición de la Granularidad
+- **Fact_Citas:** Una fila = Una cita médica individual
+- **Fact_Ordenamientos:** Una fila = Una autorización de procedimiento
+
+#### Paso 3: Identificación de Dimensiones
+Aplicamos la pregunta: **"¿Cómo queremos analizar los hechos?"**
+
+```
+Queremos analizar las citas POR:
+├── ¿Quién? → Dim_Paciente, Dim_Medico
+├── ¿Cuándo? → Dim_Fecha
+├── ¿Qué procedimiento? → Dim_Procedimiento_CUPS
+├── ¿Qué diagnóstico? → Dim_Diagnostico
+├── ¿Dónde? → Dim_IPS_Sede
+└── ¿Bajo qué convenio? → Dim_Convenio
+```
+
+#### Paso 4: Identificación de Métricas
+Las métricas responden: **"¿Qué queremos medir?"**
+- Oportunidad en días
+- Cantidad de servicios
+- Costos (valores unitarios y totales)
+- Conteos (citas, ordenamientos)
+
+---
+
+## 4. DIMENSIONES DETALLADAS
+
+### 4.1 Dim_Paciente
+
+**Justificación:**
+- Análisis demográfico esencial en salud
+- Segmentación por edad, género, ubicación
+- Identificación de pacientes crónicos
+
+**Campos Seleccionados:**
+```python
+{
+    "PACIENTE_ID": "PK - Identificador único",
+    "PACIENTE_TIPO_ID": "Tipo documento (CC, TI, etc.)",
+    "PACIENTE_NOMBRE_COMPLETO": "Nombre para reportes",
+    "PACIENTE_SEXO": "Segmentación por género",
+    "PACIENTE_FECHA_NACIMIENTO": "Cálculo de edad",
+    "PACIENTE_EDAD_ACTUAL": "Análisis por rangos etarios",
+    "PACIENTE_DIRECCION": "Geolocalización",
+    "PACIENTE_MUNICIPIO": "Análisis territorial",
+    "PACIENTE_ZONA": "Urbano/Rural",
+    "PACIENTE_TELEFONO_MOVIL": "Contacto",
+    "ES_CRONICO": "Segmentación especial",
+    "FECHA_INGRESO_CRONICO": "Análisis de temporalidad"
+}
+```
+
+**KPIs Derivados:**
+- Pacientes únicos atendidos
+- Distribución por grupos etarios (0-5, 6-17, 18-59, 60+)
+- % Pacientes crónicos vs no crónicos
+- Cobertura geográfica por municipio
+- Análisis de género en servicios
+
+---
+
+### 4.2 Dim_Medico
+
+**Justificación:**
+- Medición de productividad médica
+- Análisis por especialidad
+- Distribución de carga de trabajo
+
+**Campos Seleccionados:**
+```python
+{
+    "MEDICO_ID": "PK - Identificador único",
+    "MEDICO_NOMBRE": "Identificación del profesional",
+    "MEDICO_ESPECIALIDAD": "Agrupación por área médica"
+}
+```
+
+**KPIs Derivados:**
+- Top 10 médicos con más atenciones
+- Productividad por médico (citas/día, citas/semana)
+- Distribución de carga por especialidad
+- Oportunidad promedio por médico
+- Tasa de no asistencia por médico
+- Valor generado por médico (ordenamientos)
+
+---
+
+### 4.3 Dim_Fecha (Calendario)
+
+**Justificación:**
+- Análisis de tendencias temporales
+- Estacionalidad en servicios de salud
+- Comparativos período a período
+
+**Campos Seleccionados:**
+```python
+{
+    "FECHA_KEY": "PK - Formato YYYYMMDD (20250102)",
+    "FECHA": "Fecha completa",
+    "AÑO": "Agrupación anual",
+    "MES": "Número de mes (1-12)",
+    "MES_NOMBRE": "Enero, Febrero, etc.",
+    "TRIMESTRE": "Q1, Q2, Q3, Q4",
+    "SEMANA_AÑO": "Semana 1-52",
+    "DIA_SEMANA": "1-7 (Lunes-Domingo)",
+    "DIA_SEMANA_NOMBRE": "Lunes, Martes, etc.",
+    "ES_FIN_SEMANA": "Bandera Sí/No"
+}
+```
+
+**KPIs Derivados:**
+- Citas por semana/mes/trimestre
+- Tendencias semanales (comparativo)
+- Días con mayor demanda
+- Estacionalidad de servicios
+- Crecimiento año sobre año (YoY)
+- Análisis de fines de semana vs días laborales
+
+---
+
+### 4.4 Dim_Procedimiento_CUPS
+
+**Justificación:**
+- Clasificación estandarizada de procedimientos
+- Relación entre citas y ordenamientos
+- Análisis de servicios más demandados
+
+**Campos Seleccionados:**
+```python
+{
+    "CUPS_CODIGO": "PK - Código único del procedimiento",
+    "PROCEDIMIENTO_NOMBRE": "Descripción del procedimiento",
+    "CATEGORIA_CUPS": "Agrupación por tipo (derivado del código)"
+}
+```
+
+**KPIs Derivados:**
+- Top 20 procedimientos más solicitados
+- Distribución de procedimientos por especialidad
+- Valor promedio por tipo de procedimiento
+- Cantidad de ordenamientos por procedimiento
+- Relación citas → ordenamientos por CUPS
+
+---
+
+### 4.5 Dim_Diagnostico
+
+**Justificación:**
+- Análisis epidemiológico
+- Identificación de patologías prevalentes
+- Relación diagnóstico-tratamiento
+
+**Campos Seleccionados:**
+```python
+{
+    "DIAGNOSTICO_CODIGO": "PK - Código CIE-10",
+    "DIAGNOSTICO_NOMBRE": "Descripción del diagnóstico"
+}
+```
+
+**KPIs Derivados:**
+- Top 10 diagnósticos más frecuentes
+- Diagnósticos por grupo etario
+- Diagnósticos por género
+- Relación diagnóstico → procedimientos
+- Prevalencia por municipio
+
+---
+
+### 4.6 Dim_IPS_Sede
+
+**Justificación:**
+- Análisis de capacidad instalada
+- Distribución geográfica de servicios
+- Rendimiento por sede
+
+**Campos Seleccionados:**
+```python
+{
+    "IPS_SEDE_ID": "PK - Identificador generado",
+    "IPS_NOMBRE": "Nombre de la IPS",
+    "SEDE_NOMBRE": "Nombre de la sede específica",
+    "PRESTADOR_ID": "Identificador del prestador",
+    "PRESTADOR_NOMBRE": "Nombre del prestador"
+}
+```
+
+**KPIs Derivados:**
+- Atenciones por IPS/Sede
+- Capacidad de atención por sede
+- Oportunidad promedio por IPS
+- Distribución de especialidades por sede
+- Costos por prestador
+
+---
+
+### 4.7 Dim_Convenio
+
+**Justificación:**
+- Análisis financiero por pagador
+- Segmentación por régimen (Contributivo/Subsidiado)
+- Costos por tipo de convenio
+
+**Campos Seleccionados:**
+```python
+{
+    "CONVENIO_ID": "PK - Identificador del convenio",
+    "CONVENIO_NOMBRE": "Nombre de la aseguradora",
+    "REGIMEN": "Contributivo/Subsidiado"
+}
+```
+
+**KPIs Derivados:**
+- Distribución de atenciones por convenio
+- % Contributivo vs Subsidiado
+- Valor promedio por convenio
+- Procedimientos más frecuentes por régimen
+
+---
+
+## 5. TABLAS DE HECHOS DETALLADAS
+
+### 5.1 Fact_Citas
+
+**Granularidad:** Una cita médica individual
+
+**Estructura:**
+```python
+{
+    # Claves
+    "CITA_ID": "PK",
+    "PACIENTE_ID": "FK → Dim_Paciente",
+    "MEDICO_ID": "FK → Dim_Medico",
+    "FECHA_CITA_KEY": "FK → Dim_Fecha",
+    "FECHA_ATENCION_KEY": "FK → Dim_Fecha",
+    "CUPS_CODIGO": "FK → Dim_Procedimiento_CUPS",
+    "DIAGNOSTICO_CODIGO": "FK → Dim_Diagnostico",
+    "IPS_SEDE_ID": "FK → Dim_IPS_Sede",
+    "CONVENIO_ID": "FK → Dim_Convenio",
+    
+    # Métricas
+    "OPORTUNIDAD_DIAS": "Medida de oportunidad",
+    "TIENE_REMISION": "0/1 indicador",
+    
+    # Atributos Degenerados (quedan en la fact)
+    "ESTADO_CITA": "Asignada, Atendida, Cancelada",
+    "ESTADO_CONSULTA": "Atendida, No asistió",
+    "TIPO_CITA": "Primera vez, Control",
+    "MODALIDAD_ATENCION": "Presencial, Telemedicina",
+    "ACTIVAS_ANULADAS": "Activa/Anulada",
+    "PYM": "Promoción y Mantenimiento",
+    "POBLACION_VULNERABLE": "Sí/No"
+}
+```
+
+**Métricas Calculables:**
+```python
+# Contadores
+- Total_Citas = COUNT(CITA_ID)
+- Citas_Atendidas = COUNT(CITA_ID WHERE ESTADO_CONSULTA = 'Atendida')
+- Citas_No_Asistidas = COUNT(CITA_ID WHERE ESTADO_CONSULTA = 'No asistió')
+
+# Oportunidad
+- Oportunidad_Promedio = AVG(OPORTUNIDAD_DIAS)
+- %_Citas_Oportunas = COUNT(OPORTUNIDAD_DIAS <= 3) / Total_Citas
+
+# Tasas
+- Tasa_No_Asistencia = Citas_No_Asistidas / Total_Citas * 100
+- Tasa_Cancelación = COUNT(ESTADO_CITA = 'Cancelada') / Total_Citas * 100
+
+# Con Remisión
+- %_Citas_Con_Remision = SUM(TIENE_REMISION) / Total_Citas * 100
+```
+
+---
+
+### 5.2 Fact_Ordenamientos
+
+**Granularidad:** Una autorización de procedimiento
+
+**Estructura:**
+```python
+{
+    # Claves
+    "AUTORIZACION_NUMERO": "PK",
+    "PACIENTE_ID": "FK → Dim_Paciente",
+    "MEDICO_ID": "FK → Dim_Medico",
+    "FECHA_ATENCION_KEY": "FK → Dim_Fecha",
+    "CUPS_CODIGO": "FK → Dim_Procedimiento_CUPS",
+    "DIAGNOSTICO_CODIGO": "FK → Dim_Diagnostico",
+    "PRESTADOR_ID": "FK → Dim_IPS_Sede",
+    "CONVENIO_ID": "FK → Dim_Convenio",
+    
+    # Métricas
+    "CANTIDAD_SERVICIOS": "Cantidad ordenada",
+    "VALOR_UNITARIO": "Costo unitario",
+    "VALOR_TOTAL": "CANTIDAD_SERVICIOS * VALOR_UNITARIO (calculado)"
+}
+```
+
+**Métricas Calculables:**
+```python
+# Contadores
+- Total_Ordenamientos = COUNT(AUTORIZACION_NUMERO)
+- Total_Servicios = SUM(CANTIDAD_SERVICIOS)
+
+# Costos
+- Costo_Total = SUM(VALOR_TOTAL)
+- Costo_Promedio_Ordenamiento = AVG(VALOR_TOTAL)
+- Costo_Por_Paciente = SUM(VALOR_TOTAL) / COUNT(DISTINCT PACIENTE_ID)
+- Costo_Por_Procedimiento = SUM(VALOR_TOTAL) GROUP BY CUPS_CODIGO
+
+# Promedios
+- Servicios_Promedio_Por_Orden = AVG(CANTIDAD_SERVICIOS)
+- Valor_Promedio_Unitario = AVG(VALOR_UNITARIO)
+```
+
+---
+
+## 6. MATRIZ COMPLETA DE KPIs
+
+### 6.1 KPIs Operacionales
+
+| KPI | Fórmula | Dimensiones Involucradas | Propósito |
+|-----|---------|-------------------------|-----------|
+| **Total Citas Programadas** | COUNT(CITA_ID) | Todas | Volumen operacional |
+| **Citas Efectivas** | COUNT(ESTADO_CONSULTA='Atendida') | Fecha, Médico, IPS | Productividad |
+| **Tasa Asistencia** | Citas_Efectivas/Total_Citas*100 | Fecha, Paciente | Comportamiento paciente |
+| **Oportunidad Promedio** | AVG(OPORTUNIDAD_DIAS) | Médico, Especialidad, IPS | Acceso a servicios |
+| **% Oportunidad ≤3 días** | COUNT(OPORTUNIDAD≤3)/Total*100 | Todas | Cumplimiento normativo |
+
+### 6.2 KPIs Financieros
+
+| KPI | Fórmula | Dimensiones Involucradas | Propósito |
+|-----|---------|-------------------------|-----------|
+| **Facturación Total** | SUM(VALOR_TOTAL) | Fecha, Convenio | Ingresos |
+| **Facturación Promedio** | AVG(VALOR_TOTAL) | Procedimiento, Convenio | Análisis de tarifas |
+| **Costo Por Paciente** | SUM(VALOR_TOTAL)/COUNT(PACIENTE) | Paciente, Diagnóstico | Gestión de costos |
+| **Top Procedimientos Costo** | SUM(VALOR_TOTAL) BY CUPS | Procedimiento | Priorización |
+| **Distribución Régimen** | SUM(VALOR) BY REGIMEN | Convenio | Mix de ingresos |
+
+### 6.3 KPIs de Recursos Humanos
+
+| KPI | Fórmula | Dimensiones Involucradas | Propósito |
+|-----|---------|-------------------------|-----------|
+| **Productividad Médico** | COUNT(CITA) / COUNT(DISTINCT MEDICO) | Médico, Fecha | Carga de trabajo |
+| **Top 10 Médicos** | COUNT(CITA) ORDER BY DESC | Médico | Reconocimiento |
+| **Especialidades Demandadas** | COUNT(CITA) BY ESPECIALIDAD | Médico | Planeación de recursos |
+| **Citas por Médico/Semana** | COUNT(CITA) / Semanas | Médico, Fecha | Capacidad |
+
+### 6.4 KPIs Epidemiológicos
+
+| KPI | Fórmula | Dimensiones Involucradas | Propósito |
+|-----|---------|-------------------------|-----------|
+| **Top 10 Diagnósticos** | COUNT(CITA) BY DIAGNOSTICO | Diagnóstico | Prevalencia |
+| **Pacientes Crónicos** | COUNT(ES_CRONICO='Sí') | Paciente | Gestión de riesgo |
+| **Distribución Etaria** | COUNT BY Grupo_Edad | Paciente | Perfil demográfico |
+| **Diagnósticos por Género** | COUNT BY SEXO, DIAGNOSTICO | Paciente, Diagnóstico | Análisis diferencial |
+
+### 6.5 KPIs de Infraestructura
+
+| KPI | Fórmula | Dimensiones Involucradas | Propósito |
+|-----|---------|-------------------------|-----------|
+| **Atenciones por IPS** | COUNT(CITA) BY IPS | IPS_Sede | Distribución geográfica |
+| **Capacidad por Sede** | COUNT(CITA) BY SEDE | IPS_Sede, Fecha | Gestión de capacidad |
+| **Oportunidad por IPS** | AVG(OPORTUNIDAD) BY IPS | IPS_Sede | Comparativo de desempeño |
+
+### 6.6 KPIs de Calidad
+
+| KPI | Fórmula | Dimensiones Involucradas | Propósito |
+|-----|---------|-------------------------|-----------|
+| **% Citas con Remisión** | SUM(TIENE_REMISION)/Total*100 | Médico, Especialidad | Integralidad |
+| **Cancelaciones** | COUNT(ESTADO='Cancelada')/Total | Fecha, IPS | Eficiencia operativa |
+| **Reprogramaciones** | COUNT(TIPO='Reprogramada') | Todas | Gestión de agenda |
+
+---
+
+## 7. CASOS DE USO - DASHBOARDS
+
+### 7.1 Dashboard Ejecutivo
+**Objetivo:** Vista general del negocio
+
+**Componentes:**
+- KPI Cards: Total Citas, Tasa Asistencia, Oportunidad Promedio, Facturación Total
+- Gráfico de líneas: Tendencia semanal de citas
+- Gráfico de barras: Top 5 IPS por volumen
+- Mapa: Distribución geográfica de pacientes
+- Tabla: Top 10 diagnósticos
+
+**Filtros:** Fecha, Régimen, IPS
+
+---
+
+### 7.2 Dashboard Médico
+**Objetivo:** Análisis de productividad médica
+
+**Componentes:**
+- Tabla detalle: Listado de médicos con métricas
+- Gráfico de barras: Top 10 médicos por atenciones
+- Gráfico circular: Distribución por especialidad
+- Gráfico de líneas: Tendencia de productividad
+- Matriz: Oportunidad promedio por médico y especialidad
+
+**Filtros:** Especialidad, IPS, Período
+
+---
+
+### 7.3 Dashboard Financiero
+**Objetivo:** Análisis de costos e ingresos
+
+**Componentes:**
+- KPI Cards: Facturación Total, Costo Promedio, Margen
+- Gráfico de barras: Top 10 procedimientos por valor
+- Gráfico circular: Distribución Contributivo vs Subsidiado
+- Tabla: Detalle por convenio
+- Waterfall: Composición de costos
+
+**Filtros:** Convenio, Régimen, Procedimiento, Período
+
+---
+
+### 7.4 Dashboard Operacional
+**Objetivo:** Monitoreo día a día
+
+**Componentes:**
+- Calendario de citas
+- Gráfico de líneas: Citas diarias vs capacidad
+- Semáforo: Oportunidad por IPS
+- Tabla: Citas del día por estado
+- Alertas: No asistencias, cancelaciones
+
+**Filtros:** Fecha, IPS, Sede
+
+---
+
+## 8. RELACIONES DEL MODELO
+
+### 8.1 Diagrama de Relaciones
+
+```
+                    Dim_Fecha
+                        |
+                    (1) | (*)
+                        |
+    Dim_Paciente -- Fact_Citas ------- Dim_Medico
+         (1)            |                  (1)
+                    (*) | (*)          
+                        |
+                 Dim_Procedimiento_CUPS ----+
+                        |                    |
+                    (*) | (*)                |
+                        |                (1) | (*)
+                 Fact_Ordenamientos          |
+                        |                    |
+                        +--------------------+
+                        |
+    Dim_Convenio -- (1) | (*) -- Dim_IPS_Sede
+                        |
+                 Dim_Diagnostico
+```
+
+### 8.2 Cardinalidad
+- **Uno a Muchos (1:*):** Cada dimensión puede relacionarse con múltiples registros de hechos
+- **Muchos a Muchos (vía CUPS):** Citas y Ordenamientos se relacionan por el procedimiento
+
+---
+
+## 9. VENTAJAS DEL MODELO PARA ANÁLISIS
+
+### 9.1 Flexibilidad Analítica
+```python
+# Ejemplo: Análisis multidimensional
+Citas_Por_Medico_Y_Mes = (
+    Fact_Citas
+    .join(Dim_Medico)
+    .join(Dim_Fecha)
+    .groupby(['MEDICO_NOMBRE', 'MES'])
+    .count()
+)
+```
+
+### 9.2 Performance
+- Consultas optimizadas por índices en claves foráneas
+- Agregaciones pre-calculables
+- Modelo denormalizado reduce JOINs
+
+### 9.3 Mantenibilidad
+- Agregar dimensiones no afecta facts existentes
+- Cambios en atributos dimensionales centralizados
+- Fácil documentación y comprensión
+
+---
+
+## 10. CAMPOS EXCLUIDOS Y JUSTIFICACIÓN
+
+### 10.1 Campos No Incluidos en Dimensiones
+
+| Campo Original | Razón de Exclusión |
+|----------------|-------------------|
+| AGENDA_ID | Dato operacional muy granular, no analítico |
+| TURNO_DOBLE | Atributo degenerado, quedaría en fact si necesario |
+| NOTA_CITA, NOTA_NO_ASISTENCIA | Texto libre, no estructurado para análisis |
+| FUNCIONARIO_* | Dato administrativo secundario |
+| ROTULO, FUNCIONALIDAD | Campos técnicos sin valor analítico actual |
+
+### 10.2 Campos como Atributos Degenerados
+Quedan en la tabla de hechos porque:
+- Son específicos de cada transacción
+- No se consultan independientemente
+- No tienen jerarquías propias
+
+Ejemplos:
+- ESTADO_CITA
+- MODALIDAD_ATENCION
+- PYM
+- POBLACION_VULNERABLE
+
+---
+
+## 11. IMPLEMENTACIÓN TÉCNICA
+
+### 11.1 Consideraciones de Power BI
+
+**Relaciones:**
+- Configurar como "Uno a Muchos" desde dimensiones a hechos
+- Activar filtrado bidireccional solo donde sea necesario
+- Marcar Dim_Fecha como "Tabla de fechas"
+
+**Optimizaciones:**
+- Crear columnas calculadas en dimensiones
+- Medidas DAX en lugar de columnas calculadas en facts
+- Usar variables en DAX para mejorar performance
+
+**Ejemplo de Medida DAX:**
+```dax
+Oportunidad Promedio = 
+VAR CuentaCitas = COUNTROWS(Fact_Citas)
+VAR SumaOportunidad = SUM(Fact_Citas[OPORTUNIDAD_DIAS])
+RETURN
+    DIVIDE(SumaOportunidad, CuentaCitas, 0)
+```
+
+---
+
+## 12. PRÓXIMOS PASOS
+
+### 12.1 Fase de Implementación
+1. ✅ Diseño del modelo (completado)
+2. ⏳ Desarrollo de script Python ETL
+3. ⏳ Carga de datos a Power BI
+4. ⏳ Creación de medidas DAX
+5. ⏳ Desarrollo de dashboards
+6. ⏳ Testing y validación
+7. ⏳ Documentación de usuario final
+
+### 12.2 Mejoras Futuras
+- Incorporar datos de farmacia
+- Integrar datos de hospitalización
+- Análisis predictivo de no asistencias
+- Alertas automáticas de oportunidad
+
+---
+
+## 13. CONCLUSIONES
+
+El modelo estrella diseñado permite:
+
+✅ **Análisis integral** de operaciones médicas y financieras
+✅ **Performance óptima** en Power BI
+✅ **Flexibilidad** para múltiples perspectivas de análisis
+✅ **Escalabilidad** para incorporar nuevas dimensiones
+✅ **Claridad** en la estructura para usuarios de negocio
+
+Este modelo está listo para soportar decisiones estratégicas, operacionales y financieras en el sistema de salud Coosalud.
+
+---
+
+**Documento elaborado por:** Equipo de Análisis de Datos
+**Fecha:** 02 de Enero de 2025
+**Versión:** 1.0

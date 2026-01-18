@@ -59,9 +59,12 @@ def cargar_mapeo(ruta_mapeo):
     
     return mapeo
 
-
 def aplicar_encabezados(ruta_original, mapeo):
     """Aplica los nuevos encabezados al archivo original"""
+    
+    # Cargar el archivo original
+    wb = load_workbook(ruta_original)
+    hojas = wb.sheetnames
     
     # Crear nombre del archivo de salida
     directorio = os.path.dirname(ruta_original)
@@ -74,43 +77,42 @@ def aplicar_encabezados(ruta_original, mapeo):
     
     cambios_totales = 0
     
-    # Cargar todas las hojas
-    excel_file = pd.ExcelFile(ruta_original)
-    hojas = excel_file.sheet_names
-    
-    # Crear un writer una sola vez
-    with pd.ExcelWriter(archivo_salida, engine='openpyxl') as writer:
-        # Procesar cada hoja
-        for hoja in hojas:
-            print(f"📄 Procesando hoja: {hoja}")
-            
-            # Leer la hoja
-            df = pd.read_excel(ruta_original, sheet_name=hoja)
-            
-            # Crear mapeo de columnas para esta hoja
-            columnas_nuevas = {}
-            cambios_hoja = 0
-            
-            for col_original in df.columns:
-                clave = (hoja, col_original)
-                if clave in mapeo:
-                    col_nueva = mapeo[clave]
-                    if col_nueva != col_original:
-                        columnas_nuevas[col_original] = col_nueva
-                        cambios_hoja += 1
-                        print(f"   ✓ '{col_original}' → '{col_nueva}'")
-                else:
-                    print(f"   ⚠️  Columna '{col_original}' no encontrada en el mapeo")
-            
-            # Renombrar columnas
-            if columnas_nuevas:
-                df.rename(columns=columnas_nuevas, inplace=True)
-            
-            # Escribir hoja
-            df.to_excel(writer, sheet_name=hoja, index=False)
-            
-            cambios_totales += cambios_hoja
-            print(f"   Total cambios en esta hoja: {cambios_hoja}\n")
+    # Procesar cada hoja
+    for hoja in hojas:
+        print(f"📄 Procesando hoja: {hoja}")
+        
+        # Leer la hoja
+        df = pd.read_excel(ruta_original, sheet_name=hoja)
+        
+        # Crear mapeo de columnas para esta hoja
+        columnas_nuevas = {}
+        cambios_hoja = 0
+        
+        for col_original in df.columns:
+            clave = (hoja, col_original)
+            if clave in mapeo:
+                col_nueva = mapeo[clave]
+                if col_nueva != col_original:
+                    columnas_nuevas[col_original] = col_nueva
+                    cambios_hoja += 1
+                    print(f"   ✓ '{col_original}' → '{col_nueva}'")
+            else:
+                print(f"   ⚠️  Columna '{col_original}' no encontrada en el mapeo")
+        
+        # Renombrar columnas
+        if columnas_nuevas:
+            df.rename(columns=columnas_nuevas, inplace=True)
+        
+        # Guardar hoja en el nuevo archivo
+        if hoja == hojas[0]:
+            with pd.ExcelWriter(archivo_salida, engine='openpyxl') as writer:
+                df.to_excel(writer, sheet_name=hoja, index=False)
+        else:
+            with pd.ExcelWriter(archivo_salida, engine='openpyxl', mode='a') as writer:
+                df.to_excel(writer, sheet_name=hoja, index=False)
+        
+        cambios_totales += cambios_hoja
+        print(f"   Total cambios en esta hoja: {cambios_hoja}\n")
     
     return archivo_salida, cambios_totales
 
@@ -194,10 +196,8 @@ def main():
     print(f"\n{'='*60}")
     print(f"✓ PROCESO COMPLETADO EXITOSAMENTE")
     print(f"{'='*60}")
-    print(f"\n📁 Archivos generados:")
-    print(f"   1. {archivo_salida}")
-    if archivo_json:
-        print(f"   2. {archivo_json}")
+    print(f"\n📁 Archivo generado:")
+    print(f"   {archivo_salida}")
     print(f"\n📊 Total de cambios aplicados: {cambios}")
     print(f"\n{'='*60}\n")
 
